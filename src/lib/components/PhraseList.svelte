@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { phrases } from "../stores/phrases";
+  import { phrases, deletePhrase } from "../stores/phrases";
   import PhraseItem from "./PhraseItem.svelte";
   import type { AudioPhrase } from "../types";
   import type WaveSurfer from "wavesurfer.js";
@@ -41,6 +41,7 @@
       {wavesurfer}
       onUpdate={handlePhraseUpdate}
       onPlayPhrase={handlePlayPhrase}
+      onDelete={deletePhrase}
     />
   {/each}
 </div>

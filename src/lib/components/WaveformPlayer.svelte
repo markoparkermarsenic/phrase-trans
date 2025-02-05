@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, afterUpdate } from "svelte";
   import WaveSurfer from "wavesurfer.js";
   import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.esm.js";
-  import { phrases } from "../stores/phrases";
+  import { phrases, deletePhrase } from "../stores/phrases";
 
   export let audioFile: File | null = null;
   export let onPlayerReady: (wavesurfer: WaveSurfer) => void = () => {};
@@ -10,7 +10,9 @@
   let waveformRef: HTMLDivElement;
   let wavesurfer: WaveSurfer;
   let regions: RegionsPlugin;
+  let previousPhrases: string[] = [];
   let currentPhraseStart: number | null = null;
+  let selectedRegion: any = null;
 
   const random = (min: number, max: number) =>
     Math.random() * (max - min) + min;
@@ -27,13 +29,21 @@
     );
   }
 
-  function handleKeyPress(event: KeyboardEvent) {
+  function handleKeyDown(event: KeyboardEvent) {
     if (!wavesurfer) {
       console.error("wavesurfer is not initialized");
       return;
     }
 
+    if (event.key === "Backspace" && selectedRegion) {
+      event.preventDefault();
+      deletePhrase(selectedRegion.id);
+      selectedRegion.remove();
+      selectedRegion = null;
+    }
+
     if (event.key === "x") {
+      event.preventDefault();
       const currentTime = wavesurfer.getCurrentTime();
 
       if (!wavesurfer.isPlaying()) {
@@ -71,8 +81,16 @@
         console.log("Completed phrase");
       }
     }
+  }
+
+  function handleKeyPress(event: KeyboardEvent) {
+    if (!wavesurfer) {
+      console.error("wavesurfer is not initialized");
+      return;
+    }
 
     if (event.key === " ") {
+      event.preventDefault();
       if (wavesurfer.isPlaying()) {
         wavesurfer.pause();
       } else {
@@ -89,6 +107,28 @@
   }
 
   let zoomLevel = 100; // Initial zoom level (pixels per second)
+  let speedLevel = 100; // Initial speed level (percentage)
+
+  function handleSpeedChange(event: Event) {
+    const slider = event.target as HTMLInputElement;
+    const speed = Number(slider.value);
+    speedLevel = speed;
+
+    if (wavesurfer) {
+      wavesurfer.setPlaybackRate(speed / 100);
+    }
+
+    // If a region is selected, update its speed
+    if (selectedRegion) {
+      phrases.update((currentPhrases) =>
+        currentPhrases.map((phrase) =>
+          phrase.phraseID === selectedRegion.id
+            ? { ...phrase, speed: speed }
+            : phrase,
+        ),
+      );
+    }
+  }
 
   // Function to handle zoom level changes
   function handleZoomChange(event: Event) {
@@ -147,14 +187,42 @@
 
     regions.on("region-clicked", (region, e) => {
       e.stopPropagation();
+      // Update selection
+      if (selectedRegion && selectedRegion !== region) {
+        selectedRegion.setOptions({ color: randomColor() });
+      }
+      selectedRegion = region;
+      region.setOptions({ color: "rgba(255, 74, 74, 0.5)" }); // Red highlight for selected
+
+      // Find and apply the phrase's speed
+      const phrase = $phrases.find((p) => p.phraseID === region.id);
+      if (phrase) {
+        speedLevel = phrase.speed;
+        wavesurfer.setPlaybackRate(phrase.speed / 100);
+      }
+
       region.play();
-      region.setOptions({ color: randomColor() });
+    });
+
+    // Handle click outside regions to clear selection
+    wavesurfer.on("click", () => {
+      if (selectedRegion) {
+        selectedRegion.setOptions({ color: randomColor() });
+        selectedRegion = null;
+      }
     });
 
     let activeRegion = null;
     regions.on("region-in", (region) => {
       console.log("region-in", region);
       activeRegion = region;
+
+      // Apply phrase speed when region starts playing
+      const phrase = $phrases.find((p) => p.phraseID === region.id);
+      if (phrase) {
+        speedLevel = phrase.speed;
+        wavesurfer.setPlaybackRate(phrase.speed / 100);
+      }
     });
 
     regions.on("region-out", (region) => {
@@ -164,14 +232,19 @@
           region.play();
         } else {
           activeRegion = null;
+          // Reset speed to default when region finishes playing
+          speedLevel = 100;
+          wavesurfer.setPlaybackRate(1);
         }
       }
     });
 
+    window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keypress", handleKeyPress);
     window.addEventListener("wheel", handleWheel, { passive: false });
 
     return () => {
+      window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keypress", handleKeyPress);
       window.removeEventListener("wheel", handleWheel);
       wavesurfer.destroy();
@@ -189,9 +262,25 @@
   $: if (audioFile && wavesurfer) {
     loadAudio(audioFile);
   }
+
+  // Handle phrase deletions by removing corresponding regions
+  $: if (regions && $phrases) {
+    const currentPhraseIds = $phrases.map((p) => p.phraseID);
+    const deletedPhraseIds = previousPhrases.filter(
+      (id) => !currentPhraseIds.includes(id),
+    );
+
+    deletedPhraseIds.forEach((id) => {
+      const region = regions.getRegions().find((r) => r.id === id);
+      if (region) {
+        region.remove();
+      }
+    });
+
+    previousPhrases = currentPhraseIds;
+  }
 </script>
 
-// WaveformPlayer.svelte
 <div class="waveform-container">
   <div bind:this={waveformRef} />
   {#if currentPhraseStart !== null}
@@ -213,6 +302,18 @@
       bind:value={zoomLevel}
       on:input={handleZoomChange}
     />
+  </label>
+  <br />
+  <label class="speed-slider">
+    Speed:
+    <input
+      type="range"
+      min="15"
+      max="110"
+      bind:value={speedLevel}
+      on:input={handleSpeedChange}
+    />
+    {speedLevel}%
   </label>
 </div>
 

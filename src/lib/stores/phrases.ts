@@ -15,3 +15,6 @@ export const createPhrase = (): AudioPhrase => ({
     speed: 100
 });
 
+export const deletePhrase = (phraseID: string): void => {
+    phrases.update((current) => current.filter(phrase => phrase.phraseID !== phraseID));
+};

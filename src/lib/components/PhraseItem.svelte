@@ -6,6 +6,7 @@
   export let wavesurfer: WaveSurfer | null = null;
   export let onUpdate: (phrase: AudioPhrase) => void;
   export let onPlayPhrase: (start: number, end: number, speed: number) => void;
+  export let onDelete: (phraseID: string) => void;
 
   function handlePlay() {
     onPlayPhrase(phrase.phraseStart, phrase.phraseEnd, phrase.speed);
@@ -102,6 +103,10 @@
       on:change={() => onUpdate(phrase)}
     />
   </label>
+
+  <button on:click={() => onDelete(phrase.phraseID)} class="delete-button">
+    Delete
+  </button>
 </div>
 
 <style>
@@ -168,5 +173,19 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+  }
+
+  .delete-button {
+    background: #ff4a4a;
+    color: white;
+    border: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: auto;
+  }
+
+  .delete-button:hover {
+    background: #b01e1e;
   }
 </style>
