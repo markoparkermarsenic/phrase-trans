@@ -12,6 +12,16 @@
     onPlayPhrase(phrase.phraseStart, phrase.phraseEnd, phrase.speed);
   }
 
+  function updatePhraseName() {
+    // If the name is empty or just whitespace, get the number from the current phrases
+    if (!phrase.phraseName.trim()) {
+      const match = phrase.phraseName.match(/Phrase(\d+)/);
+      const number = match ? match[1] : "";
+      phrase.phraseName = `Phrase${number || "1"}`;
+    }
+    onUpdate(phrase);
+  }
+
   function updateTiming(
     start: number | null = null,
     end: number | null = null,
@@ -38,7 +48,12 @@
 </script>
 
 <div class="phrase-item">
-  <span class="phrase-id">ID: {phrase.phraseID}</span>
+  <span class="phrase-id">ID: {phrase.phraseName}</span>
+  <input
+    type="string"
+    bind:value={phrase.phraseName}
+    on:change={() => updatePhraseName()}
+  />
 
   <div class="timing-controls">
     <div class="time-input">
@@ -51,13 +66,6 @@
           on:change={() => updateTiming()}
         />
       </label>
-      <button
-        on:click={() => markCurrentTime("start")}
-        disabled={!wavesurfer}
-        class="mark-button"
-      >
-        Mark
-      </button>
     </div>
 
     <div class="time-input">
@@ -70,13 +78,6 @@
           on:change={() => updateTiming()}
         />
       </label>
-      <button
-        on:click={() => markCurrentTime("end")}
-        disabled={!wavesurfer}
-        class="mark-button"
-      >
-        Mark
-      </button>
     </div>
 
     <button on:click={handlePlay} disabled={!wavesurfer} class="play-button">

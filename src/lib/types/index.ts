@@ -5,4 +5,5 @@ export interface AudioPhrase {
   complete: boolean;
   speed: number;
   color?: string;
+  phraseName: string
 }

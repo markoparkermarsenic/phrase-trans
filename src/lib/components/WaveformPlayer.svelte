@@ -2,7 +2,7 @@
   import { onMount, onDestroy, afterUpdate } from "svelte";
   import WaveSurfer from "wavesurfer.js";
   import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.esm.js";
-  import { phrases, deletePhrase } from "../stores/phrases";
+  import { phrases, deletePhrase, createPhrase } from "../stores/phrases";
 
   export let audioFile: File | null = null;
   export let onPlayerReady: (wavesurfer: WaveSurfer) => void = () => {};
@@ -13,6 +13,7 @@
   let previousPhrases: string[] = [];
   let currentPhraseStart: number | null = null;
   let selectedRegion: any = null;
+  let isHoveringWaveform = false;
 
   const random = (min: number, max: number) =>
     Math.random() * (max - min) + min;
@@ -30,9 +31,20 @@
   }
 
   function handleKeyDown(event: KeyboardEvent) {
-    if (!wavesurfer) {
-      console.error("wavesurfer is not initialized");
-      return;
+    // Always prevent spacebar default behavior
+    if (event.key === " ") {
+      event.preventDefault();
+
+      if (!wavesurfer) {
+        console.error("wavesurfer is not initialized");
+        return;
+      }
+
+      if (wavesurfer.isPlaying()) {
+        wavesurfer.pause();
+      } else {
+        wavesurfer.play();
+      }
     }
 
     if (event.key === "Backspace" && selectedRegion) {
@@ -54,18 +66,13 @@
         currentPhraseStart = currentTime;
         console.log("Started new phrase at:", currentTime);
       } else {
-        const phraseID = crypto.randomUUID();
-        const phrase = {
-          phraseID,
-          phraseStart: currentPhraseStart,
-          phraseEnd: currentTime,
-          complete: false,
-          speed: 100,
-        };
+        const phrase = createPhrase();
+        phrase.phraseStart = currentPhraseStart;
+        phrase.phraseEnd = currentTime;
 
         // Add region to the waveform
         regions.addRegion({
-          id: phraseID,
+          id: phrase.phraseID,
           start: currentPhraseStart,
           end: currentTime,
           content: "Phrase",
@@ -79,22 +86,6 @@
 
         currentPhraseStart = null;
         console.log("Completed phrase");
-      }
-    }
-  }
-
-  function handleKeyPress(event: KeyboardEvent) {
-    if (!wavesurfer) {
-      console.error("wavesurfer is not initialized");
-      return;
-    }
-
-    if (event.key === " ") {
-      event.preventDefault();
-      if (wavesurfer.isPlaying()) {
-        wavesurfer.pause();
-      } else {
-        wavesurfer.play();
       }
     }
   }
@@ -140,20 +131,29 @@
 
   // Function to handle wheel/pinch events
   function handleWheel(event: WheelEvent) {
-    event.preventDefault(); // Prevent default scrolling behavior
+    if (isHoveringWaveform) {
+      event.preventDefault();
+      // Adjust zoom level based on wheel/pinch direction
+      const zoomFactor = 1.1; // Controls how fast zooming happens
+      if (event.deltaY < 0) {
+        // Zoom in (scroll up or pinch out)
+        zoomLevel = Math.min(zoomLevel * zoomFactor, 1000); // Cap at 1000px/sec
+      } else {
+        // Zoom out (scroll down or pinch in)
+        zoomLevel = Math.max(zoomLevel / zoomFactor, 10); // Cap at 10px/sec
+      }
 
-    // Adjust zoom level based on wheel/pinch direction
-    const zoomFactor = 1.1; // Controls how fast zooming happens
-    if (event.deltaY < 0) {
-      // Zoom in (scroll up or pinch out)
-      zoomLevel = Math.min(zoomLevel * zoomFactor, 1000); // Cap at 1000px/sec
-    } else {
-      // Zoom out (scroll down or pinch in)
-      zoomLevel = Math.max(zoomLevel / zoomFactor, 10); // Cap at 10px/sec
+      // Update WaveSurfer zoom level
+      wavesurfer.zoom(zoomLevel);
     }
+  }
 
-    // Update WaveSurfer zoom level
-    wavesurfer.zoom(zoomLevel);
+  function handleMouseEnter() {
+    isHoveringWaveform = true;
+  }
+
+  function handleMouseLeave() {
+    isHoveringWaveform = false;
   }
 
   onMount(() => {
@@ -166,6 +166,8 @@
       interact: true,
       barWidth: 2,
       barGap: 2,
+      fillParent: true,
+      minPxPerSec: 100,
     });
 
     regions = RegionsPlugin.create();
@@ -240,12 +242,10 @@
     });
 
     window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keypress", handleKeyPress);
     window.addEventListener("wheel", handleWheel, { passive: false });
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keypress", handleKeyPress);
       window.removeEventListener("wheel", handleWheel);
       wavesurfer.destroy();
     };
@@ -282,7 +282,14 @@
 </script>
 
 <div class="waveform-container">
-  <div bind:this={waveformRef} />
+  <div class="waveform-wrapper">
+    <div
+      bind:this={waveformRef}
+      class="waveform"
+      on:mouseenter={handleMouseEnter}
+      on:mouseleave={handleMouseLeave}
+    />
+  </div>
   {#if currentPhraseStart !== null}
     <div class="marking-indicator">
       Marking phrase... (Press 'x' again to end)
@@ -292,32 +299,26 @@
     <input type="checkbox" bind:checked={loop} on:change={handleLoopChange} />
     Loop regions
   </label>
-  <br />
-  <label class="zoom-slider">
-    Zoom:
-    <input
-      type="range"
-      min="10"
-      max="1000"
-      bind:value={zoomLevel}
-      on:input={handleZoomChange}
-    />
-  </label>
-  <br />
-  <label class="speed-slider">
-    Speed:
-    <input
-      type="range"
-      min="15"
-      max="110"
-      bind:value={speedLevel}
-      on:input={handleSpeedChange}
-    />
-    {speedLevel}%
-  </label>
+  <div class="speed-control">
+    <label class="speed-slider">
+      Speed: {speedLevel}%
+      <input
+        type="range"
+        min="15"
+        max="110"
+        bind:value={speedLevel}
+        on:input={handleSpeedChange}
+      />
+    </label>
+  </div>
 </div>
 
 <style>
+  :global(body) {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  }
+
   .waveform-container {
     width: 100%;
     margin: 1rem 0;
@@ -325,6 +326,58 @@
     background: #f5f5f5;
     border-radius: 4px;
     position: relative;
+    font-family: inherit;
+    overflow: hidden;
+  }
+
+  .waveform-container :global(wave) {
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .speed-control {
+    display: flex;
+    justify-content: center;
+    margin: 1rem 0;
+  }
+
+  .speed-slider {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 80%;
+    font-size: 1.2rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .speed-slider input[type="range"] {
+    width: 100%;
+    height: 8px;
+    margin: 1rem 0;
+    -webkit-appearance: none;
+    background: rgba(200, 0, 200, 0.2);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .speed-slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: rgb(200, 0, 200);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .speed-slider input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: rgb(200, 0, 200);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
   }
 
   .marking-indicator {
@@ -336,5 +389,7 @@
     padding: 0.5rem 1rem;
     border-radius: 0 0 4px 4px;
     font-size: 0.9rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
   }
 </style>
