@@ -47,7 +47,7 @@
   }
 </script>
 
-<div class="phrase-item">
+<div class="phrase-item" style="background: {phrase.color || 'white'}">
   <span class="phrase-id">ID: {phrase.phraseName}</span>
   <input
     type="string"
@@ -117,7 +117,6 @@
     align-items: center;
     padding: 1rem;
     border-bottom: 1px solid #ccc;
-    background: white;
   }
 
   .timing-controls {

@@ -66,9 +66,11 @@
         currentPhraseStart = currentTime;
         console.log("Started new phrase at:", currentTime);
       } else {
+        const color = randomColor();
         const phrase = createPhrase();
         phrase.phraseStart = currentPhraseStart;
         phrase.phraseEnd = currentTime;
+        phrase.color = color;
 
         // Add region to the waveform
         regions.addRegion({
@@ -76,7 +78,7 @@
           start: currentPhraseStart,
           end: currentTime,
           content: "Phrase",
-          color: randomColor(),
+          color: color,
           drag: true,
           resize: true,
         });
@@ -133,18 +135,23 @@
   function handleWheel(event: WheelEvent) {
     if (isHoveringWaveform) {
       event.preventDefault();
-      // Adjust zoom level based on wheel/pinch direction
-      const zoomFactor = 1.1; // Controls how fast zooming happens
-      if (event.deltaY < 0) {
-        // Zoom in (scroll up or pinch out)
-        zoomLevel = Math.min(zoomLevel * zoomFactor, 1000); // Cap at 1000px/sec
-      } else {
-        // Zoom out (scroll down or pinch in)
-        zoomLevel = Math.max(zoomLevel / zoomFactor, 10); // Cap at 10px/sec
-      }
 
-      // Update WaveSurfer zoom level
-      wavesurfer.zoom(zoomLevel);
+      if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+        // Horizontal scrolling (with shift key or trackpad horizontal gesture)
+        const scrollAmount = event.deltaX || event.deltaY;
+        wavesurfer.setScroll(wavesurfer.getScroll() + scrollAmount * 0.3);
+      } else {
+        // Vertical scrolling for zoom
+        const zoomFactor = 1.1;
+        if (event.deltaY < 0) {
+          // Zoom in (scroll up)
+          zoomLevel = Math.min(zoomLevel * zoomFactor, 1000);
+        } else {
+          // Zoom out (scroll down)
+          zoomLevel = Math.max(zoomLevel / zoomFactor, 10);
+        }
+        wavesurfer.zoom(zoomLevel);
+      }
     }
   }
 
@@ -167,7 +174,9 @@
       barWidth: 2,
       barGap: 2,
       fillParent: true,
-      minPxPerSec: 100,
+      responsive: true,
+      minPxPerSec: 50,
+      maxCanvasWidth: 4000,
     });
 
     regions = RegionsPlugin.create();
@@ -191,10 +200,27 @@
       e.stopPropagation();
       // Update selection
       if (selectedRegion && selectedRegion !== region) {
-        selectedRegion.setOptions({ color: randomColor() });
+        const newColor = randomColor();
+        selectedRegion.setOptions({ color: newColor });
+        // Update color in phrases store
+        phrases.update((currentPhrases) =>
+          currentPhrases.map((phrase) =>
+            phrase.phraseID === selectedRegion.id
+              ? { ...phrase, color: newColor }
+              : phrase,
+          ),
+        );
       }
       selectedRegion = region;
       region.setOptions({ color: "rgba(255, 74, 74, 0.5)" }); // Red highlight for selected
+      // Update color in phrases store for selected region
+      phrases.update((currentPhrases) =>
+        currentPhrases.map((phrase) =>
+          phrase.phraseID === region.id
+            ? { ...phrase, color: "rgba(255, 74, 74, 0.5)" }
+            : phrase,
+        ),
+      );
 
       // Find and apply the phrase's speed
       const phrase = $phrases.find((p) => p.phraseID === region.id);
@@ -209,7 +235,16 @@
     // Handle click outside regions to clear selection
     wavesurfer.on("click", () => {
       if (selectedRegion) {
-        selectedRegion.setOptions({ color: randomColor() });
+        const newColor = randomColor();
+        selectedRegion.setOptions({ color: newColor });
+        // Update color in phrases store
+        phrases.update((currentPhrases) =>
+          currentPhrases.map((phrase) =>
+            phrase.phraseID === selectedRegion.id
+              ? { ...phrase, color: newColor }
+              : phrase,
+          ),
+        );
         selectedRegion = null;
       }
     });
@@ -322,21 +357,37 @@
   .waveform-container {
     width: 100%;
     margin: 1rem 0;
-    padding: 1rem;
     background: #f5f5f5;
     border-radius: 4px;
     position: relative;
     font-family: inherit;
+  }
+
+  .waveform-wrapper {
+    padding: 1rem;
     overflow: hidden;
   }
 
-  .waveform-container :global(wave) {
+  .waveform {
+    display: block;
+    width: 100%;
+  }
+
+  .waveform :global(wave) {
+    display: block !important;
+    width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: hidden !important;
   }
 
+  .waveform-container > label {
+    padding: 0 1rem;
+    display: block;
+  }
+
   .speed-control {
+    padding: 0 1rem;
     display: flex;
     justify-content: center;
     margin: 1rem 0;
