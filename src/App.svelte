@@ -1,78 +1,54 @@
 <script lang="ts">
-  import { writable, type Writable } from "svelte/store";
+  import { phrases, addPhrase } from "./lib/stores/phrases";
+  import {
+    activeProjectId,
+    storeAudioFile,
+    getProjectAudioFile,
+    initializeProjectsStore,
+  } from "./lib/stores/projects";
+  import ProjectDashboard from "./lib/components/ProjectDashboard.svelte";
   import type { AudioPhrase } from "./lib/types";
+  import { onDestroy, onMount } from "svelte";
 
-  // Store for phrases
-  const phrases: Writable<AudioPhrase[]> = writable([]);
+  onMount(() => {
+    initializeProjectsStore();
+  });
 
   // Audio player reference
   let audioPlayer: HTMLAudioElement;
   let currentAudio: string | null = null;
 
-  // Create a new phrase with default values
-  const createPhrase = (): AudioPhrase => ({
-    phraseID: crypto.randomUUID(),
-    phraseStart: 0,
-    phraseEnd: 0,
-    complete: false,
-    speed: 100, // percentage
-  });
-
-  // Function to add a new phrase
-  function addPhrase(): void {
-    phrases.update((currentPhrases: AudioPhrase[]): AudioPhrase[] => [
-      ...currentPhrases,
-      createPhrase(),
-    ]);
-  }
-
-  // Function to update phrase timing
-  function updatePhraseTiming(
-    phraseID: string,
-    start: number,
-    end: number,
-  ): void {
-    phrases.update((currentPhrases: AudioPhrase[]): AudioPhrase[] =>
-      currentPhrases.map(
-        (phrase: AudioPhrase): AudioPhrase =>
-          phrase.phraseID === phraseID
-            ? { ...phrase, phraseStart: start, phraseEnd: end }
-            : phrase,
-      ),
-    );
-  }
-
-  // Function to toggle completion status
-  function toggleComplete(phraseID: string): void {
-    phrases.update((currentPhrases: AudioPhrase[]): AudioPhrase[] =>
-      currentPhrases.map(
-        (phrase: AudioPhrase): AudioPhrase =>
-          phrase.phraseID === phraseID
-            ? { ...phrase, complete: !phrase.complete }
-            : phrase,
-      ),
-    );
-  }
-
-  // Function to update playback speed
-  function updateSpeed(phraseID: string, newSpeed: number): void {
-    phrases.update((currentPhrases: AudioPhrase[]): AudioPhrase[] =>
-      currentPhrases.map(
-        (phrase: AudioPhrase): AudioPhrase =>
-          phrase.phraseID === phraseID
-            ? { ...phrase, speed: newSpeed }
-            : phrase,
-      ),
-    );
-  }
-
   // Function to handle file selection
-  function handleFileSelect(event: Event): void {
+  async function handleFileSelect(event: Event): Promise<void> {
     const target = event.target as HTMLInputElement;
     const file = target.files?.[0];
-    if (file) {
-      currentAudio = URL.createObjectURL(file);
+    if (file && $activeProjectId) {
+      try {
+        // Store file in IndexedDB and get reference
+        await storeAudioFile($activeProjectId, file);
+        currentAudio = URL.createObjectURL(file);
+      } catch (error) {
+        console.error("Failed to store audio file:", error);
+        alert("Failed to store audio file. Please try again.");
+      }
     }
+  }
+
+  // Load project audio file when switching projects
+  $: if ($activeProjectId) {
+    if (currentAudio) {
+      URL.revokeObjectURL(currentAudio);
+      currentAudio = null;
+    }
+    getProjectAudioFile($activeProjectId)
+      .then((file) => {
+        if (file) {
+          currentAudio = URL.createObjectURL(file);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to load project audio file:", error);
+      });
   }
 
   // Function to validate timing
@@ -102,73 +78,108 @@
       audioPlayer.addEventListener("timeupdate", stopAtEnd);
     }
   }
+
+  // Cleanup audio URL when component is destroyed
+  onDestroy(() => {
+    if (currentAudio) {
+      URL.revokeObjectURL(currentAudio);
+    }
+  });
 </script>
 
 <main>
-  <div class="audio-controls">
-    <input type="file" accept="audio/*" on:change={handleFileSelect} />
-    {#if currentAudio}
-      <audio> bind:this={audioPlayer} src={currentAudio} controls </audio>
-    {/if}
-  </div>
-
-  <button on:click={addPhrase}>Add New Phrase</button>
-
-  <div class="phrases-list">
-    {#each $phrases as phrase (phrase.phraseID)}
-      <div class="phrase-item">
-        <span>ID: {phrase.phraseID}</span>
-        <div class="timing-controls">
-          <input
-            type="number"
-            bind:value={phrase.phraseStart}
-            on:change={() =>
-              updatePhraseTiming(
-                phrase.phraseID,
-                phrase.phraseStart,
-                phrase.phraseEnd,
-              )}
-          />
-          <input
-            type="number"
-            bind:value={phrase.phraseEnd}
-            on:change={() =>
-              updatePhraseTiming(
-                phrase.phraseID,
-                phrase.phraseStart,
-                phrase.phraseEnd,
-              )}
-          />
-          <button on:click={() => playPhrase(phrase)} disabled={!currentAudio}>
-            Play Phrase
-          </button>
-        </div>
-        <div class="speed-control">
-          <span>Speed: {phrase.speed}%</span>
-          <input
-            type="range"
-            min="50"
-            max="200"
-            bind:value={phrase.speed}
-            on:change={() => updateSpeed(phrase.phraseID, phrase.speed)}
-          />
-        </div>
-        <label>
-          Complete:
-          <input
-            type="checkbox"
-            bind:checked={phrase.complete}
-            on:change={() => toggleComplete(phrase.phraseID)}
-          />
-        </label>
+  {#if !$activeProjectId}
+    <ProjectDashboard />
+  {:else}
+    <div class="workspace">
+      <div class="workspace-header">
+        <button class="back-btn" on:click={() => ($activeProjectId = null)}>
+          ← Back to Projects
+        </button>
       </div>
-    {/each}
-  </div>
+      <div class="audio-controls">
+        <input type="file" accept="audio/*" on:change={handleFileSelect} />
+        {#if currentAudio}
+          <audio bind:this={audioPlayer} src={currentAudio} controls></audio>
+        {/if}
+      </div>
+
+      <button on:click={() => addPhrase($activeProjectId)}
+        >Add New Phrase</button
+      >
+
+      <div class="phrases-list">
+        {#each $phrases as phrase (phrase.phraseID)}
+          <div class="phrase-item">
+            <span>{phrase.phraseName}</span>
+            <div class="timing-controls">
+              <input type="number" bind:value={phrase.phraseStart} />
+              <input type="number" bind:value={phrase.phraseEnd} />
+              <button
+                on:click={() => playPhrase(phrase)}
+                disabled={!currentAudio}
+              >
+                Play Phrase
+              </button>
+            </div>
+            <div class="speed-control">
+              <span>Speed: {phrase.speed}%</span>
+              <input
+                type="range"
+                min="50"
+                max="200"
+                bind:value={phrase.speed}
+              />
+            </div>
+            <label>
+              Complete:
+              <input type="checkbox" bind:checked={phrase.complete} />
+            </label>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
 </main>
 
 <style>
+  main {
+    min-height: 100vh;
+    background: #f9f9f9;
+  }
+
+  .workspace {
+    padding: 1rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .workspace-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+
+  .back-btn {
+    background: transparent;
+    color: #666;
+    border: none;
+    padding: 0.5rem 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    font-size: 1rem;
+  }
+
+  .back-btn:hover {
+    color: #333;
+  }
+
   .audio-controls {
     margin: 1rem 0;
+    padding: 1rem;
+    background: #f5f5f5;
+    border-radius: 8px;
   }
 
   .phrases-list {
@@ -179,8 +190,11 @@
     display: flex;
     gap: 1rem;
     align-items: center;
-    padding: 0.5rem;
-    border-bottom: 1px solid #ccc;
+    padding: 1rem;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
   }
 
   .timing-controls {
@@ -198,5 +212,22 @@
 
   input[type="number"] {
     width: 80px;
+    padding: 0.25rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+  }
+
+  button {
+    background: #4caf50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
   }
 </style>

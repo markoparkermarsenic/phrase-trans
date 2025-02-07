@@ -2,7 +2,14 @@
   import { onMount, onDestroy, afterUpdate } from "svelte";
   import WaveSurfer from "wavesurfer.js";
   import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.esm.js";
-  import { phrases, deletePhrase, createPhrase } from "../stores/phrases";
+  import {
+    phrases,
+    deletePhrase,
+    addPhrase,
+    updatePhrase,
+  } from "../stores/phrases";
+  import { get } from "svelte/store";
+  import { activeProjectId } from "../stores/projects";
 
   export let audioFile: File | null = null;
   export let onPlayerReady: (wavesurfer: WaveSurfer) => void = () => {};
@@ -20,14 +27,8 @@
   const randomColor = () =>
     `rgba(${random(0, 255)}, ${random(0, 255)}, ${random(0, 255)}, 0.5)`;
 
-  function updatePhrase(regionId: string, start: number, end: number) {
-    phrases.update((currentPhrases) =>
-      currentPhrases.map((phrase) =>
-        phrase.phraseID === regionId
-          ? { ...phrase, phraseStart: start, phraseEnd: end }
-          : phrase,
-      ),
-    );
+  function updatePhraseRegion(regionId: string, start: number, end: number) {
+    updatePhrase(regionId, { phraseStart: start, phraseEnd: end });
   }
 
   function handleKeyDown(event: KeyboardEvent) {
@@ -67,14 +68,26 @@
         console.log("Started new phrase at:", currentTime);
       } else {
         const color = randomColor();
-        const phrase = createPhrase();
-        phrase.phraseStart = currentPhraseStart;
-        phrase.phraseEnd = currentTime;
-        phrase.color = color;
+        // Create new phrase and add it to store
+        const currentProjectId = get(activeProjectId);
+        if (!currentProjectId) {
+          console.error("No active project");
+          return;
+        }
+
+        addPhrase(currentProjectId);
+        const newPhrase = $phrases[$phrases.length - 1]; // Get the newly added phrase
+
+        // Update phrase timing and color
+        updatePhrase(newPhrase.phraseID, {
+          phraseStart: currentPhraseStart,
+          phraseEnd: currentTime,
+          color: color,
+        });
 
         // Add region to the waveform
         regions.addRegion({
-          id: phrase.phraseID,
+          id: newPhrase.phraseID,
           start: currentPhraseStart,
           end: currentTime,
           content: "Phrase",
@@ -82,9 +95,6 @@
           drag: true,
           resize: true,
         });
-
-        // Update the phrases store
-        phrases.update((currentPhrases) => [...currentPhrases, phrase]);
 
         currentPhraseStart = null;
         console.log("Completed phrase");
@@ -113,13 +123,7 @@
 
     // If a region is selected, update its speed
     if (selectedRegion) {
-      phrases.update((currentPhrases) =>
-        currentPhrases.map((phrase) =>
-          phrase.phraseID === selectedRegion.id
-            ? { ...phrase, speed: speed }
-            : phrase,
-        ),
-      );
+      updatePhrase(selectedRegion.id, { speed: speed });
     }
   }
 
@@ -193,7 +197,7 @@
     // Update phrases store when region is updated
     regions.on("region-updated", (region) => {
       console.log("Updated region", region);
-      updatePhrase(region.id, region.start, region.end);
+      updatePhraseRegion(region.id, region.start, region.end);
     });
 
     regions.on("region-clicked", (region, e) => {
@@ -203,24 +207,12 @@
         const newColor = randomColor();
         selectedRegion.setOptions({ color: newColor });
         // Update color in phrases store
-        phrases.update((currentPhrases) =>
-          currentPhrases.map((phrase) =>
-            phrase.phraseID === selectedRegion.id
-              ? { ...phrase, color: newColor }
-              : phrase,
-          ),
-        );
+        updatePhrase(selectedRegion.id, { color: newColor });
       }
       selectedRegion = region;
       region.setOptions({ color: "rgba(255, 74, 74, 0.5)" }); // Red highlight for selected
       // Update color in phrases store for selected region
-      phrases.update((currentPhrases) =>
-        currentPhrases.map((phrase) =>
-          phrase.phraseID === region.id
-            ? { ...phrase, color: "rgba(255, 74, 74, 0.5)" }
-            : phrase,
-        ),
-      );
+      updatePhrase(region.id, { color: "rgba(255, 74, 74, 0.5)" });
 
       // Find and apply the phrase's speed
       const phrase = $phrases.find((p) => p.phraseID === region.id);
@@ -238,13 +230,7 @@
         const newColor = randomColor();
         selectedRegion.setOptions({ color: newColor });
         // Update color in phrases store
-        phrases.update((currentPhrases) =>
-          currentPhrases.map((phrase) =>
-            phrase.phraseID === selectedRegion.id
-              ? { ...phrase, color: newColor }
-              : phrase,
-          ),
-        );
+        updatePhrase(selectedRegion.id, { color: newColor });
         selectedRegion = null;
       }
     });
