@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "composite": true,
     "target": "ES2022",
     "lib": [
       "ES2023"
@@ -9,7 +10,6 @@
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
-    "noEmit": true,
     "isolatedModules": true,
     "moduleDetection": "force",
     /* Linting */

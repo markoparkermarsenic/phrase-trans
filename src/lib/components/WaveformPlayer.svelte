@@ -2,6 +2,8 @@
   import { onMount, onDestroy, afterUpdate } from "svelte";
   import WaveSurfer from "wavesurfer.js";
   import RegionsPlugin from "wavesurfer.js/dist/plugins/regions.esm.js";
+
+  import Minimap from "wavesurfer.js/dist/plugins/minimap.esm.js";
   import {
     phrases,
     deletePhrase,
@@ -21,6 +23,7 @@
   let currentPhraseStart: number | null = null;
   let selectedRegion: any = null;
   let isHoveringWaveform = false;
+  let phrasesRestored = false;
 
   const random = (min: number, max: number) =>
     Math.random() * (max - min) + min;
@@ -53,6 +56,23 @@
       deletePhrase(selectedRegion.id);
       selectedRegion.remove();
       selectedRegion = null;
+    }
+    if (event.key === "c" && selectedRegion) {
+      event.preventDefault();
+      selectedRegion.play();
+    }
+
+    // Handle arrow keys for seeking
+    if (event.key === "ArrowLeft" || event.key === "a") {
+      event.preventDefault();
+      const currentTime = wavesurfer.getCurrentTime();
+      wavesurfer.setTime(Math.max(currentTime - 0.5, 0));
+    }
+    if (event.key === "ArrowRight" || event.key === "d") {
+      event.preventDefault();
+      const currentTime = wavesurfer.getCurrentTime();
+      const duration = wavesurfer.getDuration();
+      wavesurfer.setTime(Math.min(currentTime + 0.5, duration));
     }
 
     if (event.key === "x") {
@@ -181,17 +201,50 @@
       responsive: true,
       minPxPerSec: 50,
       maxCanvasWidth: 4000,
+      autoScroll: true,
+      autoCenter: false,
+    });
+
+    var minimap;
+    minimap = Minimap.create({
+      height: 20,
+      waveColor: "#ddd",
+      progressColor: "#999",
     });
 
     regions = RegionsPlugin.create();
     wavesurfer.registerPlugin(regions);
+    wavesurfer.registerPlugin(minimap);
 
     if (audioFile) {
       loadAudio(audioFile);
     }
 
+    // Restore regions from phrases store when wavesurfer is ready
     wavesurfer.on("ready", () => {
       onPlayerReady(wavesurfer);
+
+      // Only restore phrases if they haven't been restored yet
+      if (!phrasesRestored) {
+        // Restore regions from phrases store
+        $phrases.forEach((phrase) => {
+          if (
+            phrase.phraseStart !== undefined &&
+            phrase.phraseEnd !== undefined
+          ) {
+            regions.addRegion({
+              id: phrase.phraseID,
+              start: phrase.phraseStart,
+              end: phrase.phraseEnd,
+              content: phrase.phraseName || "Phrase",
+              color: phrase.color || randomColor(),
+              drag: true,
+              resize: true,
+            });
+          }
+        });
+        phrasesRestored = true;
+      }
     });
 
     // Update phrases store when region is updated

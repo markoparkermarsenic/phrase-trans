@@ -151,3 +151,12 @@ export const updatePhrase = (phraseID: string, updates: Partial<AudioPhrase>): v
 export const getProjectPhrases = (projectId: string): AudioPhrase[] => {
     return get(allPhrases).filter(phrase => phrase.projectID === projectId);
 };
+
+export const reorderPhrases = (fromIndex: number, toIndex: number): void => {
+    phrases.update(currentPhrases => {
+        const result = [...currentPhrases];
+        const [removed] = result.splice(fromIndex, 1);
+        result.splice(toIndex, 0, removed);
+        return result;
+    });
+};

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { phrases, addPhrase } from "./lib/stores/phrases";
+
   import {
     activeProjectId,
     storeAudioFile,
@@ -146,6 +147,14 @@
   main {
     min-height: 100vh;
     background: #f9f9f9;
+  }
+
+  .storage-wrapper {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem;
+    background: white;
+    border-bottom: 1px solid #e2e8f0;
   }
 
   .workspace {

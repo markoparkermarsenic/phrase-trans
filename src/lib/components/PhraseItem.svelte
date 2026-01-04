@@ -47,7 +47,12 @@
   }
 </script>
 
-<div class="phrase-item" style="background: {phrase.color || 'white'}">
+<div class="phrase-item">
+  <div
+    class="color-strip"
+    style="background: {phrase.color || '#ccc'}"
+    on:mousedown|stopPropagation
+  />
   <span class="phrase-id">ID: {phrase.phraseName}</span>
   <input
     type="string"
@@ -117,6 +122,21 @@
     align-items: center;
     padding: 1rem;
     border-bottom: 1px solid #ccc;
+    position: relative;
+    background: white;
+  }
+
+  .color-strip {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: grab;
+  }
+
+  .color-strip:active {
+    cursor: grabbing;
   }
 
   .timing-controls {
